@@ -1,0 +1,141 @@
+---
+title: "Task 1"
+author: "Romantseva VS"
+date: '24 февраля 2019 г '
+output: html_document
+---
+## Вариант 7 - Яндекс.Маркет, ноутбуки (Москва)
+
+## Загрузка библиотек
+
+```{r}
+library('xml2')
+library('XML') # разбор XML-файлов 
+library('RCurl') # работа с HTML-страницами 
+library('rjson') # чтение формата JSON 
+library('rvest') # работа с DOM сайта 
+library('dplyr') # инструменты трансформирования данных 
+```
+ 
+## Загрузка страницы
+ 
+```{r}
+#загружаем URL 
+
+url <- 'https://market.yandex.ru/catalog--noutbuki/54544/list?onstock=1&local-offers-first=1&viewtype=list'
+
+# читаем HTML страницы
+webpage <- read_html(url) 
+```
+
+Функция перебора тегов внутри тегов более высокого уровня
+
+```{r}
+get_tags <- function(node){
+  # найти все теги с метарейтингом
+  raw_data <- html_nodes(node, selector) %>% html_text
+  # значения нулевой длины (для фильма нет такого тега) меняем на пропуски
+  data_NAs <- ifelse(length(raw_data) == 0, NA, raw_data)
+}
+```
+
+## Парсинг
+
+```{r}
+# отбор названий ноутбуков по селектору
+title_data <- html_nodes(webpage,'.n-snippet-card2__title > a') %>% html_text
+head(title_data)
+str(title_data) 
+```
+
+```{r}
+#оценка с сайта 
+selector <- 'div.rating__value' 
+doc <- html_nodes(webpage, 'div.n-snippet-card2__header-stickers') 
+score_data <- sapply(doc, get_tags) 
+length(score_data) 
+head(score_data)
+score_data <- as.numeric(score_data) 
+```
+
+```{r}
+#количество отзывов
+selector <- 'span' 
+doc <- html_nodes(webpage, 'div.n-snippet-card2__header-stickers') 
+comment_data <- sapply(doc, get_tags) 
+length(comment_data) 
+head(comment_data)
+comment_data <- gsub( '\\W','',comment_data)
+comment_data <- as.numeric(comment_data)
+```
+
+```{r}
+#что нравится покупателям
+selector <- 'div:nth-child(1)' 
+doc <- html_nodes(webpage, 'div.n-snippet-card2__content') 
+reasons_data <- sapply(doc, get_tags) 
+length(reasons_data) 
+head(reasons_data)
+```
+
+```{r}
+#характеристики ноутбука
+selector <- 'ul' 
+doc <- html_nodes(webpage, 'div.n-snippet-card2__content') 
+text_data <- sapply(doc, get_tags) 
+length(text_data) 
+head(text_data)
+```
+
+```{r}
+#сколько человек купили товар за последние 2 месяца 
+selector <- 'div:nth-child(3) > div' 
+doc <- html_nodes(webpage, 'div.n-snippet-card2__content') 
+byers <- sapply(doc, get_tags) 
+head(byers)
+str(byers)
+byers <- gsub( '\\W','',byers)
+byers <- gsub( '2$','',byers)
+byers <- as.numeric(byers)
+```
+
+
+```{r}
+# цена
+price <- html_nodes(webpage, 'div.n-snippet-card2__price > div > div > a > div') %>% html_text()
+head(price)
+str(price)
+price <- gsub( '\\W','',price)
+price <- as.numeric(price)
+```
+
+```{r}
+#количество предложений
+sypply <- html_nodes(webpage, 'div.n-snippet-card2__more-prices-link > a') %>% html_text()
+head(sypply)
+str(sypply)
+sypply <- gsub( '\\W','',sypply)
+sypply <- as.numeric(sypply)
+```
+
+## Создание единого датафрейма
+
+```{r}
+DF_laptop <- data.frame(Laptop_name=title_data,
+                        Score=score_data,
+                        Comment=comment_data,
+                        Reasosns=reasons_data,
+                        Description=text_data,
+                        Byers=byers,
+                        Price=price,
+                        Sypply=sypply)
+dim(DF_laptop)
+str(DF_laptop)
+```
+
+## Запись фрейма в файл
+
+```{r}
+write.csv(DF_laptop, file = 'C:\\Progi\\laptop_moscow.csv', row.names = F)
+```
+
