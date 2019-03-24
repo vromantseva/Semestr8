@@ -1,0 +1,217 @@
+---
+title: "Task2"
+author: "V.S. Romantseva"
+date: '25 марта 2019 г '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Загрузка данных и библиотек
+
+```{r}
+#Загрузка библиотек
+library('data.table') # работаем с объектами "таблица данных" 
+library('moments') # коэффициенты асимметрии и эксцесса 
+library('lattice') 
+library('ggplot2') 
+
+#Загрузка данных
+# загружаем файл с данными по импорту масла в РФ (из прошлой практики) 
+fileURL <- 'https://raw.githubusercontent.com/aksyuk/R-data/master/COMTRADE/040510-Imp-RF-comtrade.csv'
+
+# создаём директорию для данных, если она ещё не существует: 
+if (!file.exists('./data')) { 
+  dir.create('./data') 
+} 
+# создаём файл с логом загрузок, если он ещё не существует: 
+if (!file.exists('./data/download.log')) { 
+  file.create('./data/download.log') 
+} 
+# загружаем файл, если он ещё не существует, 
+# и делаем запись о загрузке в лог: 
+if (!file.exists('./data/040510-Imp-RF-comtrade.csv')) { 
+  download.file(fileURL, './data/040510-Imp-RF-comtrade.csv') 
+  # сделать запись в лог 
+  write(paste('Файл "040510-Imp-RF-comtrade.csv" загружен', Sys.time()), 
+        file = './data/download.log', append = T) 
+} 
+# читаем данные из загруженного .csv во фрейм, если он ещё не существует 
+if (!exists('DT')){ 
+  DT.import <- data.table(read.csv('./data/040510-Imp-RF-comtrade.csv', 
+                                   stringsAsFactors = F)) 
+} 
+dim(DT.import) # размерность таблицы 
+str(DT.import) # структура (характеристики столбцов) 
+```
+
+# Замена пропусков н средние значения
+```{r}
+# сколько NA в каждом из оставшихся столбцов? 
+na.num <- apply(DT.import, 2, function(x) {sum(is.na(x))}) 
+# выводим только положительные и по убыванию 
+sort(na.num[na.num > 0], decreasing = T) 
+
+
+#явное преобразование типа, чтобы избежать проблем  при заполнении пропусков
+DT.import[, Netweight.kg := as.double(Netweight.kg)]
+# считаем медианы и округляем до целого, как исходные данные
+DT.import[, round(mean(.SD$Netweight.kg, na.rm = T), 0),
+          by = Year]
+# сначала копируем все значения
+DT.import[, Netweight.kg.mean := round(mean(.SD$Netweight.kg,
+                                                na.rm = T), 0),
+          by = Year]
+# затем заменяем пропуски на медианы
+DT.import[!is.na(Netweight.kg), Netweight.kg.mean := Netweight.kg]
+
+DT.import[is.na(Netweight.kg), Year, Netweight.kg.mean]
+DT.import[, Netweight.kg, Netweight.kg.mean]
+```
+
+#Разделяе периоды
+```{r}
+#Развиваем дату на 2 фактора: да санкций и после
+DT.import$Aug_2014 <- 'Янв 2010 - Авг 2014'
+DT.import$Aug_2014[DT.import$Period > 201408] <- 'Сент 2014 - Дек 2018'
+
+```
+
+##Построение и сохранение графика разброса BASE
+
+```{r}
+unique(DT.import$Aug_2014)
+
+# цвет по месяцам для легенды графика
+mnth.f <- as.factor(unique(DT.import$Aug_2014))
+# берём палитру на 5 цветов
+cls <- palette(rainbow(2))
+# результат
+cls
+
+# создаём график без осей
+plot(y = DT.import$Netweight.kg.mean,x = DT.import$Trade.Value.USD,
+     pch = 21, bg = cls[as.factor(DT.import$Aug_2014)],
+     axes = F, ylim = c(0, 500000), xlim = c(0, 1500000),
+     xlab = 'Стоимость поставки',
+     ylab = 'Масса поставки')
+
+abline(h = median( DT.import$Netweight.kg.mean, na.rm = F),
+       col = "green",
+       lwd = 2)
+
+# горизонтальная ось
+axis(side = 1, pos = 0, at = seq(0, 1500000, by = 100000),
+     labels = seq(0, 1500000, by = 100000))
+# вертикальная ось
+axis(side = 2, pos = 0, at = seq(0, 500000, by = 100000),
+     labels = c('', seq(100000, 500000, by = 100000)),
+     las = 2)
+
+# легенда
+legend('topright', legend = mnth.f, fill = cls[mnth.f])
+# заголовок
+mtext(text = 'Разброс значений по периодам', side = 3,
+      line = 2, font = 2)
+mtext(text = '(в легенде указан период)', side = 3,
+      line = 1, cex = 0.8, font = 3) 
+
+
+png('Pic_Base.png', width = 500, height = 500)
+
+unique(DT.import$Aug_2014)
+
+# цвет по месяцам для легенды графика
+mnth.f <- as.factor(unique(DT.import$Aug_2014))
+# берём палитру на 5 цветов
+cls <- palette(rainbow(2))
+# результат
+cls
+
+# создаём график без осей
+plot(y = DT.import$Netweight.kg.mean,x = DT.import$Trade.Value.USD,
+     pch = 21, bg = cls[as.factor(DT.import$Aug_2014)],
+     axes = F, ylim = c(0, 500000), xlim = c(0, 1500000),
+     xlab = 'Стоимость поставки',
+     ylab = 'Масса поставки')
+
+abline(h = median( DT.import$Netweight.kg.mean, na.rm = F),
+       col = "green",
+       lwd = 2)
+
+# горизонтальная ось
+axis(side = 1, pos = 0, at = seq(0, 1500000, by = 100000),
+     labels = seq(0, 1500000, by = 100000))
+# вертикальная ось
+axis(side = 2, pos = 0, at = seq(0, 500000, by = 100000),
+     labels = c('', seq(100000, 500000, by = 100000)),
+     las = 2)
+
+# легенда
+legend('topright', legend = mnth.f, fill = cls[mnth.f])
+# заголовок
+mtext(text = 'Разброс значений по периодам', side = 3,
+      line = 2, font = 2)
+mtext(text = '(в легенде указан период)', side = 3,
+      line = 1, cex = 0.8, font = 3) 
+dev.off()
+
+```
+
+##Построение и сохранение графика разброса LATTICE
+
+```{r}
+xyplot(Netweight.kg.mean ~ Trade.Value.USD | DT.import$Aug_2014, data = DT.import,
+       ylab = 'Масса поставки',
+       xlab = 'Стоимость поставки',
+       panel = function(x, y, ...) {
+         # вызов функции по умолчанию (график разброса)
+         panel.xyplot(x, y, ...)
+         # затем накладываем линии регрессии
+         panel.abline(h = median(y), lty = 1)
+       }) 
+
+
+png('Pic_Lattice.png', width = 500, height = 500)
+xyplot(Netweight.kg.mean ~ Trade.Value.USD | DT.import$Aug_2014, data = DT.import,
+       ylab = 'Масса поставки',
+       xlab = 'Стоимость поставки',
+       panel = function(x, y, ...) {
+         # вызов функции по умолчанию (график разброса)
+         panel.xyplot(x, y, ...)
+         # затем накладываем линии регрессии
+         panel.abline(h = median(y), lty = 1)
+       }) 
+dev.off()
+```
+
+##Построение и сохранение графика разброса GGPLOT
+
+```{r}
+
+gp <- ggplot(data = DT.import, aes(x = Trade.Value.USD, y = Netweight.kg.mean))
+gp <- gp + geom_point()
+gp <- gp + facet_grid(. ~ Aug_2014)
+gp <- gp +geom_hline(yintercept = median(DT.import$Netweight.kg.mean))
+gp <- gp + xlab('Стоимость поставок')
+gp <- gp + ylab('Масса поставок')
+gp <- gp + ggtitle('Зависимость масс поставо от стоимости')
+
+gp
+
+
+png('Pic_Ggplot.png', width = 500, height = 500)
+
+gp <- ggplot(data = DT.import, aes(x = Trade.Value.USD, y = Netweight.kg.mean))
+gp <- gp + geom_point()
+gp <- gp + facet_grid(. ~ Aug_2014)
+gp <- gp +geom_hline(yintercept = median(DT.import$Netweight.kg.mean))
+gp <- gp + xlab('Стоимость поставок')
+gp <- gp + ylab('Масса поставок')
+gp <- gp + ggtitle('Зависимость масс поставо от стоимости')
+
+gp
+dev.off()
+```
