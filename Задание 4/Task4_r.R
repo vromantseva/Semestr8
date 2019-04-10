@@ -1,0 +1,166 @@
+# загрузка пакетов
+library('R.utils')               # gunzip() для распаковки архивов 
+library('dismo')                 # gmap() для загрузки Google карты
+library('raster')                # функции для работы с растровыми картами в R
+library('maptools')              # инструменты для создания картограмм
+library('sp')                    # функция spplot()
+library('RColorBrewer')          # цветовые палитры
+require('rgdal')                 # функция readOGR()
+require('plyr')                  # функция join()
+library('ggplot2')               # функция ggplot()
+library('scales')                # функция pretty_breaks()
+library('mapproj')
+library('data.table')
+
+#ссылка на файл
+ShapeFileURL <- "http://biogeo.ucdavis.edu/data/gadm2.8/shp/RUS_adm_shp.zip"
+
+#создаём директорию и скачиваем файл
+if(!file.exists('/stat')) dir.create('./stat')
+if (!file.exists('./stat/RUS_adm_shp.zip')){
+  download.file(ShapeFileURL,
+                destfile = './stat/RUS_adm_shp.zip')
+}
+
+#распаковать архив
+unzip('./stat/RUS_adm_shp.zip', exdir = './stat/RUS_adm_shp')
+#список файлов
+dir('./stat/RUS_adm_shp')
+
+# прочитать данные уровня 1
+Regions <- readShapePoly('./stat/RUS_adm_shp/RUS_adm1.shp')
+
+# слот "данные"
+Regions@data
+
+df <- data.table(Regions@data)
+
+# делаем фактор из имён областей (т.е. нумеруем их)
+Regions@data$NAME_1 <- as.factor(Regions@data$NAME_1 )
+
+#загружаем данные с gks
+library(XML)
+fileURL1 <- 'http://www.gks.ru/free_doc/new_site/vvp/vrp98-15.xlsx'
+if(!file.exists('./stat')) dir.create('./stat')
+if(!file.exists('./stat/vrp98-15.xlsx')) {
+  download.file(fileURL1,
+                './stat/vrp98-15.xlsx')
+}
+
+fileURL2 <- 'http://www.gks.ru/free_doc/new_site/vvp/dusha98-15.xlsx'
+if(!file.exists('./stat/vrp_dusha98-15.xlsx')) {
+  download.file(fileURL2,
+                './stat/vrp_dusha98-15.xlsx')
+}
+
+# обработка файлов вне R и сохранение в .csv
+#открываем изменённый файл и продолжаем работу с ним
+stat.Region <- read.csv('./stat/GRP.csv', 
+                         sep = ',', dec = '.', as.is = T)
+
+# вносим данные в файл карты
+Regions@data <- merge(Regions@data, stat.Region,
+                       by.x = 'NAME_1',
+                       by.y = 'Region')
+
+# задаём палитру-градиент
+mypalette <- colorRampPalette(c('white', 'navyblue'))
+
+# строим картограмму ВРП
+spplot(Regions, 'GVP',  main = 'ВРП, млн.руб.',
+       col.regions = mypalette(20),
+       col = 'black',
+       par.settings = list(axis.line = list(col = NA)))
+
+# то же - с названиями областей
+spplot(Regions, 'GVP',
+       col.regions = mypalette(20),
+       col = 'black',
+       main = 'ВРП, млн.руб.',
+       panel = function(x, y, z, subscripts, ...){
+         panel.polygonsplot(x, y, z, subscripts, ...)
+         sp.text(coordinates(Regions),
+                 Regions$NAME_1[subscripts], cex = 0.3)
+       }, xlim=c(0,180))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Формируем данные для ggplot
+# читаем ShapeFile из папки, с указанием уровня иерархии
+Regions <- readOGR(dsn = './data/RUS_adm_shp', # папка
+                   layer = 'RUS_adm1') # уровень
+
+# создаём столбец-ключ id для связи с другими таблицами
+# (названия регионов из столбца NAME_1)
+Regions@data$id <- Regions@data$NAME_1
+
+library('gpclib')
+
+gpclibPermit()
+
+pkgbuild :: has_build_tools ( debug  =  TRUE )
+
+# преобразовываем SpatialPolygonsDataFrame в data.frame
+Regions.points <- fortify(Regions, region = 'id')
+
+# добавляем к координатам сведения о регионах
+Regions.df <- merge(Regions.points, Regions@data, by = 'id')
+
+stat.Regions <- read.csv('./stat/GRP.csv', 
+                         sep = ',', dec = '.', as.is = T)
+
+# добавляем к координатам значения показателя для заливки
+# (количество муниципльных образований из фрейма stat.Regions)
+stat.Regions$id <- stat.Regions$Region
+
+Regions.df <- merge(Regions.df,
+                    stat.Regions[, c('id',
+                                     'GVP')],
+                    by = 'id')
+
+# имена столбцов фрейма (выделены нужные для графика)
+names(Regions.df)
+
+# координаты центров полигонов (для подписей регионов)
+centroids.df <- as.data.frame(coordinates(Regions))
+
+# названия регионов (идут в том же порядке, в каком
+# считались центроиды
+centroids.df$id <- Regions@data$id
+# заменяем имена переменных, созданные по умолчанию
+colnames(centroids.df) <- c('long', 'lat', 'id')
+
+require(mapproj)
+
+require('rgdal') # функция readOGR()
+require('plyr') # функция join()
+library('ggplot2') # функция ggplot()
+library('scales') # функция pretty_breaks()
+
+gp <- ggplot() +
+  geom_polygon(data = Regions.df,
+               aes(long, lat, group = group,
+                   fill = GVP)) +
+  geom_path(data = Regions.df,
+            aes(long, lat, group = group),
+            color = 'navyblue') +
+  coord_map(projection = 'gilbert',  orientation = c(90, 0, 100)) +
+  scale_fill_distiller(palette = 'Blues',
+                       direction = 1,
+                       breaks = pretty_breaks(n = 5)) +
+  labs(x = 'Долгота', y = 'Широта',
+       title = "Количество муниципальных образований") 
+
+gp
