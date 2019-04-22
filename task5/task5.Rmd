@@ -1,0 +1,55 @@
+---
+title: "Практика5"
+author: "RomantsevaV"
+date: '20 апреля 2019 г '
+output: html_document
+output:
+  html_document:
+    self_contained: yes
+
+Построение интерактивной картограммы показателя из раздела “Environment” (Окружающая среда).
+```{r setup, warning = F, message = F}
+# загрузка пакетов
+library('data.table')
+library('WDI')
+library('leaflet')
+#devtools::install_github('mages/googleVis')
+suppressPackageStartupMessages(library('googleVis'))
+
+# для загрузки свежей версии pandoc:
+#  https://github.com/pandoc-extras/pandoc-nightly/releases/tag/hash-7c20fab3
+#  архив pandoc-windows-7c20fab3.zip распаковать в RStudio/bin/pandoc
+```
+## Интерактивная картограмма  
+
+Интерактивная картограмма на данных Всемирного Банка по [Выбросы CO2 (тыс. Т)](https://data.worldbank.org/indicator/EN.ATM.CO2E.KT?view=chart) за 2014 год.     
+```{r Интерактивная картограмма, results = 'asis', cashe = T}
+
+indicator.code <- 'EN.ATM.CO2E.KT'
+DT <- data.table(WDI(indicator = indicator.code, start = 2014, end = 2014))
+
+# все коды стран iso2
+fileURL <- 'https://pkgstore.datahub.io/core/country-list/data_csv/data/d7c9d7cfb42cb69f4422dec222dbbaa8/data_csv.csv'
+all.iso2.country.codes <- read.csv(fileURL, stringsAsFactors = F, 
+                                   na.strings = '.')
+
+# убираем макрорегионы
+DT <- na.omit(DT[iso2c %in% all.iso2.country.codes$Code, ])
+
+# объект: таблица исходных данных
+g.tbl <- gvisTable(data = DT[, -'year'],
+ options = list(width = 300, height = 400))
+# объект: интерактивная карта
+g.chart <- gvisGeoChart(data = DT, 
+                        locationvar = 'iso2c', 
+                        hovervar = 'country',
+                        colorvar = indicator.code, 
+                        options = list(width = 500, 
+                                       height = 400, 
+                                       dataMode = 'regions'))
+# размещаем таблицу и карту на одной панели (слева направо)
+TG <- gvisMerge(g.tbl, g.chart,
+ horizontal = TRUE,
+ tableOptions = 'bgcolor=\"#CCCCCC\" cellspacing=10')
+TG
+```
